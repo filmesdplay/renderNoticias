@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import os, re
+import os, re, subprocess, tempfile
 
 app = Flask(__name__)
 
@@ -17,16 +17,17 @@ def gerar_short():
         id_noticia = sanitizar_id(data.get('id', 'sem_id'))
 
         roteiro = gerar_roteiro(titulo, texto)
-        arquivo = salvar_roteiro_txt(id_noticia, titulo, roteiro)
+        roteiro_txt = salvar_roteiro_txt(id_noticia, titulo, roteiro)
+        audio_mp3 = gerar_tts_edge(roteiro_txt, id_noticia)
 
         return jsonify(
             status='ok',
             id=id_noticia,
             titulo=titulo,
             roteiro=roteiro,
-            tts='pendente',
-            video='pendente',
-            artifact=arquivo
+            tts='ok',
+            audio=audio_mp3,
+            video='pendente'
         )
     except Exception as e:
         app.logger.exception('Erro em /gerar-short')
@@ -39,13 +40,17 @@ def sanitizar_id(valor):
 
 def gerar_roteiro(titulo, texto):
     trecho = ' '.join((texto or '').strip().split())
-    if len(trecho) > 700:
-        trecho = trecho[:700].rsplit(' ', 1)[0]
+    if len(trecho) > 900:
+        trecho = trecho[:900].rsplit(' ', 1)[0]
+
+    abertura = f'Hoje na Agência Brasil: {titulo}.'
+    narracao = f'{abertura} {trecho}'
+    fechamento = 'Acompanhe os principais destaques do dia.'
 
     return {
-        'abertura': f'Hoje na Agência Brasil: {titulo}.',
-        'narracao': trecho,
-        'fechamento': 'Acompanhe os principais destaques do dia.',
+        'abertura': abertura,
+        'narracao': narracao,
+        'fechamento': fechamento,
     }
 
 def salvar_roteiro_txt(id_noticia, titulo, roteiro):
@@ -63,6 +68,36 @@ def salvar_roteiro_txt(id_noticia, titulo, roteiro):
     texto.append(roteiro.get('fechamento', ''))
     out.write_text('\n'.join(texto), encoding='utf-8')
     return str(out)
+
+def gerar_tts_edge(roteiro_txt, id_noticia):
+    texto = Path(roteiro_txt).read_text(encoding='utf-8')
+    linhas = []
+    captura = False
+    for linha in texto.splitlines():
+        if linha.strip() == 'NARRACAO:':
+            captura = True
+            continue
+        if linha.strip() == 'FECHAMENTO:':
+            break
+        if captura and linha.strip():
+            linhas.append(linha.strip())
+    narracao = ' '.join(linhas)
+    narracao = re.sub(r'\s+', ' ', narracao).strip()
+    narracao = narracao[:1200]
+
+    mp3 = Path('/tmp') / f'audio_{id_noticia}.mp3'
+    txt = Path('/tmp') / f'tts_{id_noticia}.txt'
+    txt.write_text(narracao, encoding='utf-8')
+
+    cmd = [
+        'edge-tts',
+        '--voice', 'pt-BR-AntonioNeural',
+        '--rate', '+0%',
+        '--text-file', str(txt),
+        '--write-media', str(mp3)
+    ]
+    subprocess.run(cmd, check=True)
+    return str(mp3)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', '10000')))
