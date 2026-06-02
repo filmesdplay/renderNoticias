@@ -4,6 +4,37 @@ import os, re, traceback
 import asyncio
 import edge_tts
 
+import os
+import base64
+import requests
+from pathlib import Path
+
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-pro-preview-tts")
+GEMINI_VOICE_NAME = os.getenv("GEMINI_VOICE_NAME", "Kore")
+
+def gerar_tts_gemini(texto: str, output_path: str = "/tmp/audio.wav"):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_TTS_MODEL}:generateSpeech?key={GEMINI_API_KEY}"
+
+    payload = {
+        "text": texto,
+        "audioConfig": {
+            "speakingRate": 1.0,
+            "voice": {
+                "name": GEMINI_VOICE_NAME
+            }
+        }
+    }
+
+    resp = requests.post(url, json=payload, timeout=120)
+    resp.raise_for_status()
+    data = resp.json()
+
+    audio_b64 = data["audio"]["audioData"]
+    audio_bytes = base64.b64decode(audio_b64)
+
+    Path(output_path).write_bytes(audio_bytes)
+    return output_path
 app = Flask(__name__)
 
 @app.get('/')
