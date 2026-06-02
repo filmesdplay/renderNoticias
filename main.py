@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import os, tempfile, textwrap, json
+import os, traceback
 
 app = Flask(__name__)
 
@@ -10,26 +10,30 @@ def health():
 
 @app.post('/gerar-short')
 def gerar_short():
-    data = request.get_json(force=True, silent=False)
-    titulo = data.get('titulo', '')
-    texto = data.get('texto', '')
-    id_noticia = str(data.get('id', ''))
+    try:
+        data = request.get_json(force=True, silent=False) or {}
+        titulo = data.get('titulo', '')
+        texto = data.get('texto', '')
+        id_noticia = str(data.get('id', 'sem_id')).strip() or 'sem_id'
 
-    roteiro = gerar_roteiro(titulo, texto)
-    arquivo = salvar_roteiro_txt(id_noticia, titulo, roteiro)
+        roteiro = gerar_roteiro(titulo, texto)
+        arquivo = salvar_roteiro_txt(id_noticia, titulo, roteiro)
 
-    return jsonify(
-        status='ok',
-        id=id_noticia,
-        titulo=titulo,
-        roteiro=roteiro,
-        tts='pendente',
-        video='pendente',
-        artifact=arquivo
-    )
+        return jsonify(
+            status='ok',
+            id=id_noticia,
+            titulo=titulo,
+            roteiro=roteiro,
+            tts='pendente',
+            video='pendente',
+            artifact=arquivo
+        )
+    except Exception as e:
+        app.logger.exception('Erro em /gerar-short')
+        return jsonify(status='error', message=str(e)), 500
 
 def gerar_roteiro(titulo, texto):
-    trecho = ' '.join(texto.strip().split())
+    trecho = ' '.join((texto or '').strip().split())
     if len(trecho) > 700:
         trecho = trecho[:700].rsplit(' ', 1)[0]
 
@@ -45,13 +49,13 @@ def salvar_roteiro_txt(id_noticia, titulo, roteiro):
     texto.append(f'TITULO: {titulo}')
     texto.append('')
     texto.append('ABERTURA:')
-    texto.append(roteiro['abertura'])
+    texto.append(roteiro.get('abertura', ''))
     texto.append('')
     texto.append('NARRACAO:')
-    texto.append(roteiro['narracao'])
+    texto.append(roteiro.get('narracao', ''))
     texto.append('')
     texto.append('FECHAMENTO:')
-    texto.append(roteiro['fechamento'])
+    texto.append(roteiro.get('fechamento', ''))
     out.write_text('\n'.join(texto), encoding='utf-8')
     return str(out)
 
