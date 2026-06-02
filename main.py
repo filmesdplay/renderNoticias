@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import os, re, subprocess, sys, tempfile
+import os, re, traceback
+import asyncio
+import edge_tts
 
 app = Flask(__name__)
 
@@ -18,7 +20,7 @@ def gerar_short():
 
         roteiro = gerar_roteiro(titulo, texto)
         roteiro_txt = salvar_roteiro_txt(id_noticia, titulo, roteiro)
-        audio_mp3 = gerar_tts_edge(roteiro_txt, id_noticia)
+        audio_mp3 = asyncio.run(gerar_tts_edge(roteiro_txt, id_noticia))
 
         return jsonify(
             status='ok',
@@ -29,8 +31,6 @@ def gerar_short():
             audio=audio_mp3,
             video='pendente'
         )
-    except subprocess.CalledProcessError as e:
-        return jsonify(status='error', message=f'TTS failed with exit code {e.returncode}'), 500
     except Exception as e:
         app.logger.exception('Erro em /gerar-short')
         return jsonify(status='error', message=str(e)), 500
@@ -71,7 +71,7 @@ def salvar_roteiro_txt(id_noticia, titulo, roteiro):
     out.write_text('\n'.join(texto), encoding='utf-8')
     return str(out)
 
-def gerar_tts_edge(roteiro_txt, id_noticia):
+async def gerar_tts_edge(roteiro_txt, id_noticia):
     texto = Path(roteiro_txt).read_text(encoding='utf-8')
     linhas = []
     captura = False
@@ -88,17 +88,8 @@ def gerar_tts_edge(roteiro_txt, id_noticia):
     narracao = narracao[:1200]
 
     mp3 = Path('/tmp') / f'audio_{id_noticia}.mp3'
-    txt = Path('/tmp') / f'tts_{id_noticia}.txt'
-    txt.write_text(narracao, encoding='utf-8')
-
-    cmd = [
-        sys.executable, '-m', 'edge_tts',
-        '--voice', 'pt-BR-AntonioNeural',
-        '--rate', '+0%',
-        '--text', narracao,
-        '--write-media', str(mp3)
-    ]
-    subprocess.run(cmd, check=True)
+    communicate = edge_tts.Communicate(narracao, voice='pt-BR-AntonioNeural', rate='+0%')
+    await communicate.save(str(mp3))
     return str(mp3)
 
 if __name__ == '__main__':
