@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import os, re, subprocess, tempfile
+import os, re, subprocess, sys, tempfile
 
 app = Flask(__name__)
 
@@ -29,6 +29,8 @@ def gerar_short():
             audio=audio_mp3,
             video='pendente'
         )
+    except subprocess.CalledProcessError as e:
+        return jsonify(status='error', message=f'TTS failed with exit code {e.returncode}'), 500
     except Exception as e:
         app.logger.exception('Erro em /gerar-short')
         return jsonify(status='error', message=str(e)), 500
@@ -90,10 +92,10 @@ def gerar_tts_edge(roteiro_txt, id_noticia):
     txt.write_text(narracao, encoding='utf-8')
 
     cmd = [
-        'edge-tts',
+        sys.executable, '-m', 'edge_tts',
         '--voice', 'pt-BR-AntonioNeural',
         '--rate', '+0%',
-        '--text-file', str(txt),
+        '--text', narracao,
         '--write-media', str(mp3)
     ]
     subprocess.run(cmd, check=True)
