@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from pathlib import Path
-import os, traceback
+import os, re
 
 app = Flask(__name__)
 
@@ -14,7 +14,7 @@ def gerar_short():
         data = request.get_json(force=True, silent=False) or {}
         titulo = data.get('titulo', '')
         texto = data.get('texto', '')
-        id_noticia = str(data.get('id', 'sem_id')).strip() or 'sem_id'
+        id_noticia = sanitizar_id(data.get('id', 'sem_id'))
 
         roteiro = gerar_roteiro(titulo, texto)
         arquivo = salvar_roteiro_txt(id_noticia, titulo, roteiro)
@@ -31,6 +31,11 @@ def gerar_short():
     except Exception as e:
         app.logger.exception('Erro em /gerar-short')
         return jsonify(status='error', message=str(e)), 500
+
+def sanitizar_id(valor):
+    s = str(valor or 'sem_id')
+    s = re.sub(r'[^0-9A-Za-z._-]+', '_', s)
+    return s.strip('_') or 'sem_id'
 
 def gerar_roteiro(titulo, texto):
     trecho = ' '.join((texto or '').strip().split())
